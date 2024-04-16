@@ -9,7 +9,7 @@ const CHANNELS: usize = Channel::count();
 
 #[derive(Debug)]
 enum Error {
-    DuplicateNonSilenceChannel,
+    DuplicateChannel,
     AsymmetricChannels,
 }
 
@@ -28,13 +28,15 @@ impl ChannelLayout {
         })
     }
 
-    // Except Silence channel, the duplicate channels are not allowed.
+    // Except Silence and Discrete channels, duplicate channels aren't allowed.
     fn get_channel_map(channels: &[Channel]) -> Result<ChannelMap, Error> {
         let mut map = ChannelMap::empty();
         for channel in channels {
             let bitmask = ChannelMap::from(*channel);
-            if channel != &Channel::Silence && map.contains(bitmask) {
-                return Err(Error::DuplicateNonSilenceChannel);
+            if (channel != &Channel::Silence && channel != &Channel::Discrete)
+                && map.contains(bitmask)
+            {
+                return Err(Error::DuplicateChannel);
             }
             map.insert(bitmask);
         }
@@ -550,12 +552,12 @@ mod test {
 
     #[test]
     fn test_create_with_duplicate_silience_channels_f32() {
-        test_create_with_duplicate_silience_channels::<f32>()
+        test_create_with_duplicate_channels::<f32>()
     }
 
     #[test]
     fn test_create_with_duplicate_silience_channels_i16() {
-        test_create_with_duplicate_silience_channels::<i16>()
+        test_create_with_duplicate_channels::<i16>()
     }
 
     #[test]
@@ -582,7 +584,7 @@ mod test {
         test_create_with_duplicate_output_channels::<i16>()
     }
 
-    fn test_create_with_duplicate_silience_channels<T>()
+    fn test_create_with_duplicate_channels<T>()
     where
         T: MixingCoefficient,
         T::Coef: Copy,
