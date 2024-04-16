@@ -85,15 +85,37 @@ where
         let input_layout = ChannelLayout::new(input_channels).expect("Invalid input layout");
         let output_layout = ChannelLayout::new(output_channels).expect("Invalid output layout");
 
-        let mixing_matrix =
-            Self::build_mixing_matrix(input_layout.channel_map, output_layout.channel_map)
-                .unwrap_or_else(|_| Self::get_basic_matrix());
-
-        let coefficient_matrix = Self::pick_coefficients(
-            &input_layout.channels,
-            &output_layout.channels,
-            &mixing_matrix,
-        );
+        // Check if this is a professional audio interface rather than a sound card for playback, in
+        // which case it is expected to simply pass all the channel through without change.
+        // Those interfaces only have an explicit mapping for the stereo pair, but have lots of channels.
+        let mut only_stereo_or_discrete = false;
+        for channel in output_channels {
+            only_stereo_or_discrete |= *channel == Channel::Discrete
+                || *channel == Channel::FrontLeft
+                || *channel == Channel::FrontRight;
+        }
+        let coefficient_matrix = if only_stereo_or_discrete && output_channels.len() > 2 {
+            let mut matrix = Vec::with_capacity(output_channels.len());
+            // Create a diagonal line of 1.0 for input channels
+            for (output_channel_index, _) in output_channels.iter().enumerate() {
+                let mut coefficients = Vec::with_capacity(input_channels.len());
+                coefficients.resize(input_channels.len(), 0.0);
+                if output_channel_index < coefficients.len() {
+                    coefficients[output_channel_index] = 1.0;
+                }
+                matrix.push(coefficients);
+            }
+            matrix
+        } else {
+            let mixing_matrix =
+                Self::build_mixing_matrix(input_layout.channel_map, output_layout.channel_map)
+                    .unwrap_or_else(|_| Self::get_basic_matrix());
+            Self::pick_coefficients(
+                &input_layout.channels,
+                &output_layout.channels,
+                &mixing_matrix,
+            )
+        };
 
         let normalized_matrix = Self::normalize(T::max_coefficients_sum(), coefficient_matrix);
 
@@ -651,78 +673,105 @@ mod test {
     }
 
     #[test]
-    fn test_get_redirect_matrix_f32() {
-        test_get_redirect_matrix::<f32>();
+    fn test_get_discrete_mapping() {
+        test_get_discrete_mapping_matrix::<f32>();
+        test_get_discrete_mapping_matrix::<i16>();
     }
 
     #[test]
-    fn test_get_redirect_matrix_i16() {
-        test_get_redirect_matrix::<i16>();
+    fn test_get_discrete_mapping_too_many_channels() {
+        test_get_discrete_mapping_matrix_too_many_channels::<i16>();
+        test_get_discrete_mapping_matrix_too_many_channels::<f32>();
     }
 
-    fn test_get_redirect_matrix<T>()
+    // Check that a matrix is diagonal (1.0 on the diagnoal, 0.0 elsewhere). It's valid to have more input or output channels
+    fn assert_is_diagonal<T>(
+        coefficients: &Coefficient<T>,
+        input_channels: usize,
+        output_channels: usize,
+    ) where
+        T: MixingCoefficient,
+        T::Coef: Copy + Debug + PartialEq,
+    {
+        for i in 0..input_channels {
+            for j in 0..output_channels {
+                if i == j {
+                    assert_eq!(coefficients.get(i, j), T::coefficient_from_f64(1.0));
+                } else {
+                    assert_eq!(coefficients.get(i, j), T::coefficient_from_f64(0.0));
+                }
+            }
+        }
+        println!(
+            "{:?} = {:?} * {:?}",
+            output_channels, coefficients.matrix, input_channels
+        );
+    }
+
+    fn test_get_discrete_mapping_matrix<T>()
     where
         T: MixingCoefficient,
         T::Coef: Copy + Debug + PartialEq,
     {
-        // Create a matrix that only redirect the channels from input side to output side,
-        // without mixing input audio data to output audio data.
-        fn compute_redirect_matrix<T>(
-            input_channels: &[Channel],
-            output_channels: &[Channel],
-        ) -> Vec<Vec<T::Coef>>
-        where
-            T: MixingCoefficient,
-        {
-            let mut matrix = Vec::with_capacity(output_channels.len());
-            for output_channel in output_channels {
-                let mut row = Vec::with_capacity(input_channels.len());
-                for input_channel in input_channels {
-                    row.push(
-                        if input_channel != output_channel
-                            || input_channel == &Channel::Silence
-                            || output_channel == &Channel::Silence
-                        {
-                            0.0
-                        } else {
-                            1.0
-                        },
-                    );
-                }
-                matrix.push(row);
-            }
-
-            // Convert the type of the coefficients from f64 to T::Coef.
-            matrix
-                .into_iter()
-                .map(|row| row.into_iter().map(T::coefficient_from_f64).collect())
-                .collect()
-        }
-
+        // typical 5.1
         let input_channels = [
             Channel::FrontLeft,
-            Channel::Silence,
             Channel::FrontRight,
             Channel::FrontCenter,
+            Channel::BackLeft,
+            Channel::BackRight,
+            Channel::LowFrequency,
         ];
+        // going into 8 channels with a tagged stereo pair and discrete channels
         let output_channels = [
-            Channel::Silence,
             Channel::FrontLeft,
-            Channel::Silence,
-            Channel::FrontCenter,
-            Channel::BackCenter,
+            Channel::FrontRight,
+            Channel::Discrete,
+            Channel::Discrete,
+            Channel::Discrete,
+            Channel::Discrete,
+            Channel::Discrete,
+            Channel::Discrete,
         ];
 
-        // Get a redirect matrix since the output layout is asymmetric.
-        let coefficient = Coefficient::<T>::create(&input_channels, &output_channels);
+        // Get a pass-through matrix in the first 6 channels
+        let coefficients = Coefficient::<T>::create(&input_channels, &output_channels);
+        assert_is_diagonal::<T>(&coefficients, input_channels.len(), output_channels.len());
+    }
 
-        let expected = compute_redirect_matrix::<T>(&input_channels, &output_channels);
-        assert_eq!(coefficient.matrix, expected);
+    fn test_get_discrete_mapping_matrix_too_many_channels<T>()
+    where
+        T: MixingCoefficient,
+        T::Coef: Copy + Debug + PartialEq,
+    {
+        // 5.1.4
+        let input_channels = [
+            Channel::FrontLeft,
+            Channel::FrontRight,
+            Channel::FrontCenter,
+            Channel::LowFrequency,
+            Channel::FrontLeftOfCenter,
+            Channel::FrontRightOfCenter,
+            Channel::TopFrontLeft,
+            Channel::TopFrontRight,
+            Channel::BackLeft,
+            Channel::BackRight,
+        ];
+        // going into 8 channels with a tagged stereo pair and discrete channels
+        let output_channels = [
+            Channel::FrontLeft,
+            Channel::FrontRight,
+            Channel::Discrete,
+            Channel::Discrete,
+            Channel::Discrete,
+            Channel::Discrete,
+            Channel::Discrete,
+            Channel::Discrete,
+        ];
 
-        println!(
-            "{:?} = {:?} * {:?}",
-            output_channels, coefficient.matrix, input_channels
-        );
+        // First 8 channels are to be played, last two are to be dropped.
+        let coefficients = Coefficient::<T>::create(&input_channels, &output_channels);
+        assert_is_diagonal(&coefficients, input_channels.len(), output_channels.len());
     }
 
     #[test]
