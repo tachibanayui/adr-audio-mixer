@@ -88,11 +88,15 @@ where
         // Check if this is a professional audio interface rather than a sound card for playback, in
         // which case it is expected to simply pass all the channel through without change.
         // Those interfaces only have an explicit mapping for the stereo pair, but have lots of channels.
-        let mut only_stereo_or_discrete = false;
+        let mut only_stereo_or_discrete = true;
         for channel in output_channels {
-            only_stereo_or_discrete |= *channel == Channel::Discrete
-                || *channel == Channel::FrontLeft
-                || *channel == Channel::FrontRight;
+            if *channel != Channel::Discrete
+                && *channel != Channel::FrontLeft
+                && *channel != Channel::FrontRight
+            {
+                only_stereo_or_discrete = false;
+                break;
+            }
         }
         let coefficient_matrix = if only_stereo_or_discrete && output_channels.len() > 2 {
             let mut matrix = Vec::with_capacity(output_channels.len());
@@ -684,6 +688,12 @@ mod test {
         test_get_discrete_mapping_matrix_too_many_channels::<f32>();
     }
 
+    #[test]
+    fn test_get_regular_mapping_too_many_channels() {
+        test_get_regular_mapping_matrix_too_many_channels::<i16>();
+        test_get_regular_mapping_matrix_too_many_channels::<f32>();
+    }
+
     // Check that a matrix is diagonal (1.0 on the diagnoal, 0.0 elsewhere). It's valid to have more input or output channels
     fn assert_is_diagonal<T>(
         coefficients: &Coefficient<T>,
@@ -772,6 +782,50 @@ mod test {
         // First 8 channels are to be played, last two are to be dropped.
         let coefficients = Coefficient::<T>::create(&input_channels, &output_channels);
         assert_is_diagonal(&coefficients, input_channels.len(), output_channels.len());
+    }
+
+    fn test_get_regular_mapping_matrix_too_many_channels<T>()
+    where
+        T: MixingCoefficient,
+        T::Coef: Copy + Debug + PartialEq,
+    {
+        // 5.1.4
+        let input_channels = [
+            Channel::FrontLeft,
+            Channel::FrontRight,
+            Channel::FrontCenter,
+            Channel::LowFrequency,
+            Channel::FrontLeftOfCenter,
+            Channel::FrontRightOfCenter,
+            Channel::TopFrontLeft,
+            Channel::TopFrontRight,
+            Channel::BackLeft,
+            Channel::BackRight,
+        ];
+        // going into a regular 5.1 sound card
+        let output_channels = [
+            Channel::FrontLeft,
+            Channel::FrontRight,
+            Channel::FrontCenter,
+            Channel::LowFrequency,
+            Channel::BackLeft,
+            Channel::BackRight,
+        ];
+
+        let coefficients = Coefficient::<T>::create(&input_channels, &output_channels);
+
+        // Non-unity gain non-silence coefficients must be present when down mixing.
+        let mut found_non_unity_non_silence = false;
+        for row in coefficients.matrix.iter() {
+            for coeff in row.iter() {
+                if T::coefficient_from_f64(1.0) != *coeff || T::coefficient_from_f64(0.0) != *coeff
+                {
+                    found_non_unity_non_silence = true;
+                    break;
+                }
+            }
+        }
+        assert!(found_non_unity_non_silence);
     }
 
     #[test]
