@@ -454,7 +454,7 @@ impl MixingCoefficient for f32 {
     type Coef = f32;
 
     fn max_coefficients_sum() -> f64 {
-        f64::from(std::i32::MAX)
+        f64::from(i32::MAX)
     }
 
     fn coefficient_from_f64(value: f64) -> Self::Coef {
@@ -783,7 +783,7 @@ mod test {
             vec![4.0_f64, 6.0_f64, 10.0_f64],
         ];
 
-        let mut max_row_sum: f64 = std::f64::MIN;
+        let mut max_row_sum: f64 = f64::MIN;
         for row in &m {
             max_row_sum = max_row_sum.max(row.iter().sum());
         }
@@ -797,7 +797,7 @@ mod test {
         let smaller_max = max_row_sum - 0.5_f64;
         assert!(smaller_max > 0.0_f64);
         let n = Coefficient::<f32>::normalize(smaller_max, m);
-        let mut max_row_sum: f64 = std::f64::MIN;
+        let mut max_row_sum: f64 = f64::MIN;
         for row in &n {
             max_row_sum = max_row_sum.max(row.iter().sum());
             assert!(row.iter().sum::<f64>() <= smaller_max);
