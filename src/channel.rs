@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
 // The number of channels must be unique and start from 0. They will be treated as indice in the
 // mixing matrix and used to form unique bitflags in the channel map, which is a bitmap.
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 pub enum Channel {
     FrontLeft = 0,
     FrontRight = 1,
