@@ -1,10 +1,11 @@
 # Audio Mixer
 
+Test subtree
 [![CircleCI](https://circleci.com/gh/mozilla/audio-mixer.svg?style=svg)](https://circleci.com/gh/mozilla/audio-mixer)
 [![Build & Test](https://github.com/mozilla/audio-mixer/actions/workflows/test.yml/badge.svg)](https://github.com/mozilla/audio-mixer/actions/workflows/test.yml)
 
 Mixing audio data from any input channel layout to any output channel layout,
-in a *matrix-multiplication* form.
+in a _matrix-multiplication_ form.
 
 ```
 output channel #1 ▸ │ Silence    │   │ 0, 0, 0, 0 │   │ FrontRight   │ ◂ input channel #1
@@ -18,9 +19,10 @@ output channel #3 ▸ │ FrontLeft  │   │ 0, C, L, F │   │ FrontLeft   
 
 For example, the above means there are 3 output channels and 4 input channels.
 The order of output channels is _Silence, FrontRight, and FrontLeft_.
-The order of input channels is  _FrontRight, FrontCenter, FrontLeft, LowFrequency_.
+The order of input channels is _FrontRight, FrontCenter, FrontLeft, LowFrequency_.
 
 So the output data in the _channel #2_ will be:
+
 ```
 
 Output data of ch #2 (FrontRight) =
